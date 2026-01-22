@@ -55,17 +55,14 @@
             <zeebe:input source="simple" target="authentication.type" />
             <zeebe:input source="{{secrets.CAMUNDA_SAMPLE_AGENT_EMAIL_USERNAME}}" target="authentication.username" />
             <zeebe:input source="{{secrets.CAMUNDA_SAMPLE_AGENT_EMAIL_PASSWORD}}" target="authentication.password" />
-            <zeebe:input source="smtp" target="protocol" />
-            <zeebe:input source="smtp.gmail.com" target="data.smtpConfig.smtpHost" />
-            <zeebe:input source="=587" target="data.smtpConfig.smtpPort" />
-            <zeebe:input source="TLS" target="data.smtpConfig.smtpCryptographicProtocol" />
-            <zeebe:input source="sendEmailSmtp" target="data.smtpActionDiscriminator" />
-            <zeebe:input source="your-adress@gmail.com" target="data.smtpAction.from" />
-            <zeebe:input source="=currentEmail.fromAddress" target="data.smtpAction.to" />
-            <zeebe:input source="={&#10;  &#34;In-Reply-To&#34;: currentEmail.messageId&#10;}" target="data.smtpAction.headers" />
-            <zeebe:input source="=&#34;RE: &#34; + currentEmail.subject" target="data.smtpAction.subject" />
-            <zeebe:input source="PLAIN" target="data.smtpAction.contentType" />
-            <zeebe:input source="=fromAi(toolCall.emailContent, &#34;The email text content to reply the customer&#34;)" target="data.smtpAction.body" />
+            <zeebe:input source="imap" target="protocol" />
+            <zeebe:input source="{{secrets.CAMUNDA_SAMPLE_AGENT_EMAIL_IMAP_HOST}}" target="data.imapConfig.imapHost" />
+            <zeebe:input source="=&#34;{{secrets.CAMUNDA_SAMPLE_AGENT_EMAIL_IMAP_PORT}}&#34;" target="data.imapConfig.imapPort" />
+            <zeebe:input source="NONE" target="data.imapConfig.imapCryptographicProtocol" />
+            <zeebe:input source="listEmailsImap" target="data.imapActionDiscriminator" />
+            <zeebe:input source="=100" target="data.imapAction.maxToBeRead" />
+            <zeebe:input source="RECEIVED_DATE" target="data.imapAction.sortField" />
+            <zeebe:input source="ASC" target="data.imapAction.sortOrder" />
           </zeebe:ioMapping>
           <zeebe:taskHeaders>
             <zeebe:header key="elementTemplateVersion" value="3" />
@@ -83,9 +80,9 @@
             <zeebe:property name="authentication.type" value="simple" />
             <zeebe:property name="authentication.username" value="{{secrets.CAMUNDA_SAMPLE_AGENT_EMAIL_USERNAME}}" />
             <zeebe:property name="authentication.password" value="{{secrets.CAMUNDA_SAMPLE_AGENT_EMAIL_PASSWORD}}" />
-            <zeebe:property name="data.imapConfig.imapHost" value="imap.gmail.com" />
-            <zeebe:property name="data.imapConfig.imapPort" value="993" />
-            <zeebe:property name="data.imapConfig.imapCryptographicProtocol" value="TLS" />
+            <zeebe:property name="data.imapConfig.imapHost" value="{{secrets.CAMUNDA_SAMPLE_AGENT_EMAIL_IMAP_HOST}}" />
+            <zeebe:property name="data.imapConfig.imapPort" value="{{secrets.CAMUNDA_SAMPLE_AGENT_EMAIL_IMAP_PORT}}" />
+            <zeebe:property name="data.imapConfig.imapCryptographicProtocol" value="NONE" />
             <zeebe:property name="data.pollingWaitTime" value="PT10S" />
             <zeebe:property name="data.pollingConfigDiscriminator" value="unseenPollingConfig" />
             <zeebe:property name="data.pollingConfig.handlingStrategy" value="READ" />
@@ -395,17 +392,14 @@
           <zeebe:input source="simple" target="authentication.type" />
           <zeebe:input source="{{secrets.CAMUNDA_SAMPLE_AGENT_EMAIL_USERNAME}}" target="authentication.username" />
           <zeebe:input source="{{secrets.CAMUNDA_SAMPLE_AGENT_EMAIL_PASSWORD}}" target="authentication.password" />
-          <zeebe:input source="smtp" target="protocol" />
-          <zeebe:input source="smtp.gmail.com" target="data.smtpConfig.smtpHost" />
-          <zeebe:input source="=587" target="data.smtpConfig.smtpPort" />
-          <zeebe:input source="TLS" target="data.smtpConfig.smtpCryptographicProtocol" />
-          <zeebe:input source="sendEmailSmtp" target="data.smtpActionDiscriminator" />
-          <zeebe:input source="demo.agent.camunda@gmail.com" target="data.smtpAction.from" />
-          <zeebe:input source="=currentEmail.fromAddress" target="data.smtpAction.to" />
-          <zeebe:input source="={&#10;  &#34;In-Reply-To&#34;: &#34;&#60;&#34; + currentEmail.messageId + &#34;&#62;&#34;&#10;}" target="data.smtpAction.headers" />
-          <zeebe:input source="=&#34;RE: &#34; + currentEmail.subject" target="data.smtpAction.subject" />
-          <zeebe:input source="PLAIN" target="data.smtpAction.contentType" />
-          <zeebe:input source="=customer_email" target="data.smtpAction.body" />
+          <zeebe:input source="imap" target="protocol" />
+          <zeebe:input source="{{secrets.CAMUNDA_SAMPLE_AGENT_EMAIL_IMAP_HOST}}" target="data.imapConfig.imapHost" />
+          <zeebe:input source="=&#34;{{secrets.CAMUNDA_SAMPLE_AGENT_EMAIL_IMAP_PORT}}&#34;" target="data.imapConfig.imapPort" />
+          <zeebe:input source="NONE" target="data.imapConfig.imapCryptographicProtocol" />
+          <zeebe:input source="listEmailsImap" target="data.imapActionDiscriminator" />
+          <zeebe:input source="=100" target="data.imapAction.maxToBeRead" />
+          <zeebe:input source="RECEIVED_DATE" target="data.imapAction.sortField" />
+          <zeebe:input source="ASC" target="data.imapAction.sortOrder" />
         </zeebe:ioMapping>
         <zeebe:taskHeaders>
           <zeebe:header key="elementTemplateVersion" value="3" />
