@@ -48,6 +48,21 @@ For debugging, you can access the GreenMail web interface (API server) at `http:
 
 For troubleshooting, set the option `-Dgreenmail.verbose`.
 
+### Roundcube (Mail Client)
+
+```bash
+docker run -d \
+  --name roundcube \
+  -p 8000:80 \
+  --add-host=host.docker.internal:host-gateway \
+  -e ROUNDCUBEMAIL_DEFAULT_HOST=host.docker.internal \
+  -e ROUNDCUBEMAIL_DEFAULT_PORT=3143 \
+  -e ROUNDCUBEMAIL_SMTP_SERVER=host.docker.internal \
+  -e ROUNDCUBEMAIL_SMTP_PORT=3025 \
+  -e ROUNDCUBEMAIL_DB_TYPE=sqlite \
+  roundcube/roundcubemail:latest
+```
+
 ### Elasticsearch (Vector DB)
 
 > Not required. Instead, you can use the local Elasticsearch instance started by Camunda 8 Run.
