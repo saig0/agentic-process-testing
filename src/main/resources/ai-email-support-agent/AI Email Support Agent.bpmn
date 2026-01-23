@@ -55,14 +55,17 @@
             <zeebe:input source="simple" target="authentication.type" />
             <zeebe:input source="{{secrets.CAMUNDA_SAMPLE_AGENT_EMAIL_USERNAME}}" target="authentication.username" />
             <zeebe:input source="{{secrets.CAMUNDA_SAMPLE_AGENT_EMAIL_PASSWORD}}" target="authentication.password" />
-            <zeebe:input source="imap" target="protocol" />
-            <zeebe:input source="{{secrets.CAMUNDA_SAMPLE_AGENT_EMAIL_IMAP_HOST}}" target="data.imapConfig.imapHost" />
-            <zeebe:input source="=&#34;{{secrets.CAMUNDA_SAMPLE_AGENT_EMAIL_IMAP_PORT}}&#34;" target="data.imapConfig.imapPort" />
-            <zeebe:input source="NONE" target="data.imapConfig.imapCryptographicProtocol" />
-            <zeebe:input source="listEmailsImap" target="data.imapActionDiscriminator" />
-            <zeebe:input source="=100" target="data.imapAction.maxToBeRead" />
-            <zeebe:input source="RECEIVED_DATE" target="data.imapAction.sortField" />
-            <zeebe:input source="ASC" target="data.imapAction.sortOrder" />
+            <zeebe:input source="smtp" target="protocol" />
+            <zeebe:input source="{{secrets.CAMUNDA_SAMPLE_AGENT_EMAIL_SMPT_HOST}}" target="data.smtpConfig.smtpHost" />
+            <zeebe:input source="=3025" target="data.smtpConfig.smtpPort" />
+            <zeebe:input source="NONE" target="data.smtpConfig.smtpCryptographicProtocol" />
+            <zeebe:input source="sendEmailSmtp" target="data.smtpActionDiscriminator" />
+            <zeebe:input source="{{secrets.CAMUNDA_SAMPLE_AGENT_EMAIL_ADDRESS}}" target="data.smtpAction.from" />
+            <zeebe:input source="=currentEmail.fromAddress" target="data.smtpAction.to" />
+            <zeebe:input source="={&#10;  &#34;In-Reply-To&#34;: currentEmail.messageId&#10;}" target="data.smtpAction.headers" />
+            <zeebe:input source="=&#34;RE: &#34; + currentEmail.subject" target="data.smtpAction.subject" />
+            <zeebe:input source="PLAIN" target="data.smtpAction.contentType" />
+            <zeebe:input source="=fromAi(toolCall.emailContent, &#34;The email text content to reply the customer&#34;)" target="data.smtpAction.body" />
           </zeebe:ioMapping>
           <zeebe:taskHeaders>
             <zeebe:header key="elementTemplateVersion" value="3" />
@@ -127,12 +130,11 @@
             <zeebe:input source="D1024" target="embeddingModelProvider.bedrock.dimensions" />
             <zeebe:input source="=false" target="embeddingModelProvider.bedrock.normalize" />
             <zeebe:input source="=3" target="embeddingModelProvider.bedrock.maxRetries" />
-            <zeebe:input source="amazonManagedOpenSearchStore" target="vectorStore.storeType" />
-            <zeebe:input source="{{secrets.CAMUNDAAGENT_AWS_ACCESS_KEY}}" target="vectorStore.amazonManagedOpensearch.accessKey" />
-            <zeebe:input source="{{secrets.CAMUNDAAGENT_AWS_SECRET_KEY}}" target="vectorStore.amazonManagedOpensearch.secretKey" />
-            <zeebe:input source="{{secrets.CAMUNDAAGENT_AWS_LONGTERM_MEMORY_SERVER}}" target="vectorStore.amazonManagedOpensearch.serverUrl" />
-            <zeebe:input source="us-east-1" target="vectorStore.amazonManagedOpensearch.region" />
-            <zeebe:input source="specialist-knowledge-base" target="vectorStore.amazonManagedOpensearch.indexName" />
+            <zeebe:input source="elasticsearchStore" target="vectorStore.storeType" />
+            <zeebe:input source="{{secrets.CAMUNDAAGENT_DB_BASE_URL}}" target="vectorStore.elasticsearch.baseUrl" />
+            <zeebe:input source="{{secrets.CAMUNDAAGENT_DB_USERNAME}}" target="vectorStore.elasticsearch.userName" />
+            <zeebe:input source="{{secrets.CAMUNDAAGENT_DB_PASSWORD}}" target="vectorStore.elasticsearch.password" />
+            <zeebe:input source="specialist-knowledge-base" target="vectorStore.elasticsearch.indexName" />
             <zeebe:input source="PlainText" target="vectorDatabaseConnectorOperation.documentSource" />
             <zeebe:input source="=toolResult" target="vectorDatabaseConnectorOperation.documentSourceFromProcessVariable" />
             <zeebe:input source="recursiveDocumentSplitter" target="vectorDatabaseConnectorOperation.documentSplitter.splitterType" />
@@ -164,12 +166,11 @@
             <zeebe:input source="D1024" target="embeddingModelProvider.bedrock.dimensions" />
             <zeebe:input source="=false" target="embeddingModelProvider.bedrock.normalize" />
             <zeebe:input source="=3" target="embeddingModelProvider.bedrock.maxRetries" />
-            <zeebe:input source="amazonManagedOpenSearchStore" target="vectorStore.storeType" />
-            <zeebe:input source="{{secrets.CAMUNDAAGENT_AWS_ACCESS_KEY}}" target="vectorStore.amazonManagedOpensearch.accessKey" />
-            <zeebe:input source="{{secrets.CAMUNDAAGENT_AWS_SECRET_KEY}}" target="vectorStore.amazonManagedOpensearch.secretKey" />
-            <zeebe:input source="{{secrets.CAMUNDAAGENT_AWS_LONGTERM_MEMORY_SERVER}}" target="vectorStore.amazonManagedOpensearch.serverUrl" />
-            <zeebe:input source="us-east-1" target="vectorStore.amazonManagedOpensearch.region" />
-            <zeebe:input source="specialist-knowledge-base" target="vectorStore.amazonManagedOpensearch.indexName" />
+            <zeebe:input source="elasticsearchStore" target="vectorStore.storeType" />
+            <zeebe:input source="{{secrets.CAMUNDAAGENT_DB_BASE_URL}}" target="vectorStore.elasticsearch.baseUrl" />
+            <zeebe:input source="{{secrets.CAMUNDAAGENT_DB_USERNAME}}" target="vectorStore.elasticsearch.userName" />
+            <zeebe:input source="{{secrets.CAMUNDAAGENT_DB_PASSWORD}}" target="vectorStore.elasticsearch.password" />
+            <zeebe:input source="specialist-knowledge-base" target="vectorStore.elasticsearch.indexName" />
           </zeebe:ioMapping>
           <zeebe:taskHeaders>
             <zeebe:header key="elementTemplateVersion" value="2" />
@@ -245,12 +246,11 @@
           <zeebe:input source="D1024" target="embeddingModelProvider.bedrock.dimensions" />
           <zeebe:input source="=false" target="embeddingModelProvider.bedrock.normalize" />
           <zeebe:input source="=3" target="embeddingModelProvider.bedrock.maxRetries" />
-          <zeebe:input source="amazonManagedOpenSearchStore" target="vectorStore.storeType" />
-          <zeebe:input source="{{secrets.CAMUNDAAGENT_AWS_ACCESS_KEY}}" target="vectorStore.amazonManagedOpensearch.accessKey" />
-          <zeebe:input source="{{secrets.CAMUNDAAGENT_AWS_SECRET_KEY}}" target="vectorStore.amazonManagedOpensearch.secretKey" />
-          <zeebe:input source="{{secrets.CAMUNDAAGENT_AWS_LONGTERM_MEMORY_SERVER}}" target="vectorStore.amazonManagedOpensearch.serverUrl" />
-          <zeebe:input source="us-east-1" target="vectorStore.amazonManagedOpensearch.region" />
-          <zeebe:input source="=&#34;conversation-knowledge-base-&#34; + currentEmail.fromAddress" target="vectorStore.amazonManagedOpensearch.indexName" />
+          <zeebe:input source="elasticsearchStore" target="vectorStore.storeType" />
+          <zeebe:input source="{{secrets.CAMUNDAAGENT_DB_BASE_URL}}" target="vectorStore.elasticsearch.baseUrl" />
+          <zeebe:input source="{{secrets.CAMUNDAAGENT_DB_USERNAME}}" target="vectorStore.elasticsearch.userName" />
+          <zeebe:input source="{{secrets.CAMUNDAAGENT_DB_PASSWORD}}" target="vectorStore.elasticsearch.password" />
+          <zeebe:input source="=&#34;conversation-knowledge-base-&#34; + currentEmail.fromAddress" target="vectorStore.elasticsearch.indexName" />
           <zeebe:input source="PlainText" target="vectorDatabaseConnectorOperation.documentSource" />
           <zeebe:input source="=agent.responseText" target="vectorDatabaseConnectorOperation.documentSourceFromProcessVariable" />
           <zeebe:input source="noopDocumentSplitter" target="vectorDatabaseConnectorOperation.documentSplitter.splitterType" />
@@ -268,7 +268,7 @@
       <bpmn:documentation>Using knowledge base, inject contextual data to help the agent make decisions based on your company's most relevant data points</bpmn:documentation>
       <bpmn:extensionElements>
         <zeebe:taskDefinition type="io.camunda:embeddings-vector-database:1" retries="3" />
-        <zeebe:ioMapping>
+        <zeebe:ioMapping type="io.camunda:embeddings-vector-database:1">
           <zeebe:input source="retrieveDocumentOperation" target="vectorDatabaseConnectorOperation.operationType" />
           <zeebe:input source="=if currentEmail.plainTextBody != null then currentEmail.plainTextBody else currentEmail.htmlBody" target="vectorDatabaseConnectorOperation.query" />
           <zeebe:input source="=5" target="vectorDatabaseConnectorOperation.documentLimit" />
@@ -280,12 +280,11 @@
           <zeebe:input source="D1024" target="embeddingModelProvider.bedrock.dimensions" />
           <zeebe:input source="=false" target="embeddingModelProvider.bedrock.normalize" />
           <zeebe:input source="=3" target="embeddingModelProvider.bedrock.maxRetries" />
-          <zeebe:input source="amazonManagedOpenSearchStore" target="vectorStore.storeType" />
-          <zeebe:input source="{{secrets.CAMUNDAAGENT_AWS_ACCESS_KEY}}" target="vectorStore.amazonManagedOpensearch.accessKey" />
-          <zeebe:input source="{{secrets.CAMUNDAAGENT_AWS_SECRET_KEY}}" target="vectorStore.amazonManagedOpensearch.secretKey" />
-          <zeebe:input source="{{secrets.CAMUNDAAGENT_AWS_LONGTERM_MEMORY_SERVER}}" target="vectorStore.amazonManagedOpensearch.serverUrl" />
-          <zeebe:input source="us-east-1" target="vectorStore.amazonManagedOpensearch.region" />
-          <zeebe:input source="=&#34;conversation-knowledge-base-&#34; + currentEmail.fromAddress" target="vectorStore.amazonManagedOpensearch.indexName" />
+          <zeebe:input source="elasticsearchStore" target="vectorStore.storeType" />
+          <zeebe:input source="{{secrets.CAMUNDAAGENT_DB_BASE_URL}}" target="vectorStore.elasticsearch.baseUrl" />
+          <zeebe:input source="{{secrets.CAMUNDAAGENT_DB_USERNAME}}" target="vectorStore.elasticsearch.userName" />
+          <zeebe:input source="{{secrets.CAMUNDAAGENT_DB_PASSWORD}}" target="vectorStore.elasticsearch.password" />
+          <zeebe:input source="=&#34;conversation-knowledge-base-&#34; + currentEmail.fromAddress" target="vectorStore.elasticsearch.indexName" />
         </zeebe:ioMapping>
         <zeebe:taskHeaders>
           <zeebe:header key="elementTemplateVersion" value="2" />
@@ -392,14 +391,17 @@
           <zeebe:input source="simple" target="authentication.type" />
           <zeebe:input source="{{secrets.CAMUNDA_SAMPLE_AGENT_EMAIL_USERNAME}}" target="authentication.username" />
           <zeebe:input source="{{secrets.CAMUNDA_SAMPLE_AGENT_EMAIL_PASSWORD}}" target="authentication.password" />
-          <zeebe:input source="imap" target="protocol" />
-          <zeebe:input source="{{secrets.CAMUNDA_SAMPLE_AGENT_EMAIL_IMAP_HOST}}" target="data.imapConfig.imapHost" />
-          <zeebe:input source="=&#34;{{secrets.CAMUNDA_SAMPLE_AGENT_EMAIL_IMAP_PORT}}&#34;" target="data.imapConfig.imapPort" />
-          <zeebe:input source="NONE" target="data.imapConfig.imapCryptographicProtocol" />
-          <zeebe:input source="listEmailsImap" target="data.imapActionDiscriminator" />
-          <zeebe:input source="=100" target="data.imapAction.maxToBeRead" />
-          <zeebe:input source="RECEIVED_DATE" target="data.imapAction.sortField" />
-          <zeebe:input source="ASC" target="data.imapAction.sortOrder" />
+          <zeebe:input source="smtp" target="protocol" />
+          <zeebe:input source="{{secrets.CAMUNDA_SAMPLE_AGENT_EMAIL_SMPT_HOST}}" target="data.smtpConfig.smtpHost" />
+          <zeebe:input source="=3025" target="data.smtpConfig.smtpPort" />
+          <zeebe:input source="NONE" target="data.smtpConfig.smtpCryptographicProtocol" />
+          <zeebe:input source="sendEmailSmtp" target="data.smtpActionDiscriminator" />
+          <zeebe:input source="{{secrets.CAMUNDA_SAMPLE_AGENT_EMAIL_ADDRESS}}" target="data.smtpAction.from" />
+          <zeebe:input source="=currentEmail.fromAddress" target="data.smtpAction.to" />
+          <zeebe:input source="={&#10;  &#34;In-Reply-To&#34;: &#34;&#60;&#34; + currentEmail.messageId + &#34;&#62;&#34;&#10;}" target="data.smtpAction.headers" />
+          <zeebe:input source="=&#34;RE: &#34; + currentEmail.subject" target="data.smtpAction.subject" />
+          <zeebe:input source="PLAIN" target="data.smtpAction.contentType" />
+          <zeebe:input source="=customer_email" target="data.smtpAction.body" />
         </zeebe:ioMapping>
         <zeebe:taskHeaders>
           <zeebe:header key="elementTemplateVersion" value="3" />
