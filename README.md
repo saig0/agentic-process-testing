@@ -18,7 +18,7 @@ Connector secrets:
 - CAMUNDA_SAMPLE_AGENT_EMAIL_IMAP_HOST (new)
 - CAMUNDA_SAMPLE_AGENT_EMAIL_IMAP_PORT (new)
 - CAMUNDA_SAMPLE_AGENT_EMAIL_SMPT_HOST (new)
-  CAMUNDA_SAMPLE_AGENT_EMAIL_SMPT_PORT (new)
+- CAMUNDA_SAMPLE_AGENT_EMAIL_SMPT_PORT (new)
 - CAMUNDAAGENT_DB_BASE_URL (new)
 - CAMUNDAAGENT_DB_USERNAME (new)
 - CAMUNDAAGENT_DB_PASSWORD (new)
@@ -43,10 +43,10 @@ You need a mail server, a mail client, and Camunda 8 Run to run the process loca
 - Mail server: [GreenMail](https://github.com/greenmail-mail-test/greenmail) 
 - Mail client: [Roundcube](https://roundcube.net/) 
 
-Start GreenMail and Roundcube using the docker-compose file `docker-compose.yml`.
+Start GreenMail and Roundcube using the docker-compose file [docker-compose.yml](docker-compose.yml).
 
-IMAP server: `localhost:3143`
-SMTP server: `localhost:3025`
+- IMAP server: `localhost:3143`
+- SMTP server: `localhost:3025`
 
 Users:
 
@@ -55,7 +55,7 @@ Users:
 
 Go to http://localhost:8000/ to access Roundcube webmail client. Login with `demo@camunda.com` / `demo`.
 
-For debugging, you can access the GreenMail web interface (API server) at `http://localhost:8089`. 
+For debugging, you can access the GreenMail web interface (API server) at http://localhost:8089. 
 
 ### Elasticsearch (Vector DB)
 
@@ -72,7 +72,7 @@ curl -fsSL https://elastic.co/start-local | sh
 To avoid port conflicts, you modify the `/elastic-start-local/.env` file to change the HTTP port (default is `9200`):
 
 ```
-ES_LOCAL_PORT=9200
+ES_LOCAL_PORT=9201
 ```
 
 Restart Elasticsearch to apply the port change:
@@ -111,7 +111,7 @@ Start Camunda 8 Run:
 ./start.sh
 ```
 
-Login to Camunda 8 Run at `http://localhost:8080` with `demo` / `demo`.
+Login to Camunda 8 Run at http://localhost:8080 with `demo` / `demo`.
 
 ## Run the process
 
@@ -123,5 +123,5 @@ Send a new email:
 
 - From: `demo@camunda.com`
 - To: `agent@camunda.com`
-- Topic: "Loan request"
-- Message: "Hi, I want to apply for a loan to renovate my house." 
+- Topic: `Loan request`
+- Message: `Hi, I want to apply for a loan to renovate my house.`
