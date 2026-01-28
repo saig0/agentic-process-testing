@@ -1,38 +1,35 @@
 package io.camunda.dev.frauddetection;
 
-import static io.camunda.process.test.api.CamundaAssert.assertThatUserTask;
-import static io.camunda.process.test.api.assertions.UserTaskSelectors.byTaskName;
-import static org.assertj.core.api.Assertions.assertThat;
-
 import com.icegreen.greenmail.spring.GreenMailBean;
+import com.icegreen.greenmail.util.GreenMailUtil;
 import io.camunda.client.CamundaClient;
 import io.camunda.client.api.response.ProcessInstanceEvent;
-import io.camunda.dev.assertions.ai.CamundaAiAssertionDefaults;
-import io.camunda.dev.assertions.ai.CamundaAiAssertions;
-import io.camunda.dev.assertions.ai.SemanticOptions;
 import io.camunda.process.test.api.CamundaAssert;
 import io.camunda.process.test.api.CamundaProcessTestContext;
 import io.camunda.process.test.api.CamundaSpringProcessTest;
 import io.camunda.process.test.api.assertions.ElementSelectors;
+
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicReference;
+
+import jakarta.mail.Message;
+import jakarta.mail.internet.MimeMessage;
+import jakarta.mail.internet.MimeMultipart;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariables;
-import org.springframework.ai.bedrock.converse.BedrockChatOptions;
-import org.springframework.ai.bedrock.converse.BedrockProxyChatModel;
-import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.testcontainers.Testcontainers;
-import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
-import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
-import software.amazon.awssdk.regions.Region;
+
+import static io.camunda.process.test.api.CamundaAssert.assertThatUserTask;
+import static io.camunda.process.test.api.assertions.UserTaskSelectors.byTaskName;
+import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
 @CamundaSpringProcessTest
@@ -42,7 +39,7 @@ import software.amazon.awssdk.regions.Region;
       @EnabledIfEnvironmentVariable(named = "AWS_BEDROCK_ACCESS_KEY", matches = ".+"),
       @EnabledIfEnvironmentVariable(named = "AWS_BEDROCK_SECRET_KEY", matches = ".+"),
     })
-public class FraudDetectionIntegrationTest {
+public class FraudDetectionIntegrationFullTest {
 
   @Autowired private GreenMailBean greenMailBean;
 
@@ -58,31 +55,12 @@ public class FraudDetectionIntegrationTest {
   void setUp() {
     CamundaAssert.setAssertionTimeout(Duration.ofSeconds(30));
 
-    CamundaAiAssertions.configureDefaults(
-        CamundaAiAssertionDefaults.builder().judgeModel(createJudgeModel()).build());
-
     assertThat(greenMailBean.isStarted()).isTrue();
-  }
-
-  private ChatModel createJudgeModel() {
-    return BedrockProxyChatModel.builder()
-        .credentialsProvider(
-            StaticCredentialsProvider.create(
-                AwsBasicCredentials.create(
-                    System.getenv("AWS_BEDROCK_ACCESS_KEY"),
-                    System.getenv("AWS_BEDROCK_SECRET_KEY"))))
-        .region(Region.EU_CENTRAL_1)
-        .defaultOptions(
-            BedrockChatOptions.builder()
-                .model("eu.anthropic.claude-sonnet-4-5-20250929-v1:0")
-                .temperature(0.4)
-                .maxTokens(500)
-                .build())
-        .build();
   }
 
   @Test
   void executesFraudDetectionAgent() {
+    // given: tax return submitted
     final ProcessInstanceEvent processInstance =
         client
             .newCreateInstanceCommand()
@@ -102,40 +80,59 @@ public class FraudDetectionIntegrationTest {
             .send()
             .join();
 
+    // case 1: request additional information via e-mail and receive user reply
     CamundaAssert.assertThat(processInstance)
-        .hasCompletedElements(ElementSelectors.byName("Send inquiry e-mail"));
+        .hasCompletedElements(ElementSelectors.byName("Send inquiry e-mail"))
+        .hasActiveElements(ElementSelectors.byName("User response received"));
 
-    AtomicReference<String> emailBody = new AtomicReference<>();
-    CamundaAssert.assertThat(processInstance)
-        .hasActiveElement(ElementSelectors.byId("Fraud_Detection_Agent#innerInstance"), 1)
-        .hasLocalVariableSatisfies(
-            ElementSelectors.byId("Fraud_Detection_Agent#innerInstance"),
-            "toolCall",
-            Map.class,
-            toolCall -> {
-              assertThat(toolCall).isNotEmpty().containsKey("emailBody");
-              emailBody.set((String) toolCall.get("emailBody"));
+    assertThat(Arrays.asList(greenMailBean.getReceivedMessages()))
+        .hasSize(1)
+        .first()
+        .satisfies(
+            message -> {
+              assertThat(message.getSubject()).isEqualTo("Tax Return Inquiry");
+              assertThat(message.getContentType()).startsWith("multipart/mixed;");
+              MimeMultipart multipart = (MimeMultipart) message.getContent();
+              // just a poor verification of the e-mail content
+              assertThat((String) multipart.getBodyPart(0).getContent())
+                  .containsAnyOf(
+                      "additional clarification",
+                      "additional information",
+                      "request clarification",
+                      "provide additional details");
             });
 
-    CamundaAiAssertions.assertThat(emailBody.get())
-        .usingOptions(SemanticOptions.defaults().withJudgeMinScore(0.7))
-        .matchesExpectationWithJudge(
-            """
-                  An email text asking the user about at least one of the following:
+    MimeMessage receivedMessage = greenMailBean.getReceivedMessages()[0];
+    sendReplyMessage(receivedMessage);
 
-                  - the discrepancy between yearly income and expenses
-                  - clarification on the stock purchases
-                  - OPTIONAL: a remark regarding the John Doe name being generic
-                  """);
+    CamundaAssert.assertThat(processInstance)
+        .hasCompletedElements(ElementSelectors.byName("User response received"));
 
+    // case 2: call on expert analysis and detect fraud
     assertThatUserTask(byTaskName("Call On External Advisor")).isCreated();
 
     processTestContext.completeUserTask(
-            byTaskName("Call On External Advisor"),
-            Map.of("expertAnalysis", "Don't bother me", "fraudDetected", true));
+        byTaskName("Call On External Advisor"),
+        Map.of("expertAnalysis", "Don't bother me", "fraudDetected", true));
 
+    // then: verify that fraud is detected
     CamundaAssert.assertThat(processInstance)
         .isCompleted()
         .hasCompletedElements(ElementSelectors.byName("Fraud is detected"));
+  }
+
+  private void sendReplyMessage(MimeMessage receivedMessage) {
+    try {
+      MimeMessage message = new MimeMessage(greenMailBean.getGreenMail().getSmtp().createSession());
+      message.addRecipients(Message.RecipientType.TO, receivedMessage.getFrom());
+      message.addFrom(receivedMessage.getRecipients(Message.RecipientType.TO));
+      message.setHeader("In-Reply-To", receivedMessage.getMessageID());
+      message.setSubject("Re: " + receivedMessage.getSubject());
+      message.setText("All good, trust me!");
+
+      GreenMailUtil.sendMimeMessage(message);
+    } catch (Exception e) {
+      throw new RuntimeException("Failed to send reply message", e);
+    }
   }
 }
