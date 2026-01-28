@@ -1,0 +1,6 @@
+camunda:
+  process-test:
+    connectors-enabled: true
+    connectors-secrets:
+      AWS_BEDROCK_ACCESS_KEY: ${AWS_BEDROCK_ACCESS_KEY}
+      AWS_BEDROCK_SECRET_KEY: ${AWS_BEDROCK_SECRET_KEY}
