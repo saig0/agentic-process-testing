@@ -34,7 +34,12 @@ import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 
-@SpringBootTest
+@SpringBootTest(
+    properties = {
+      "camunda.process-test.connectors-env-vars.CAMUNDA_CONNECTOR_POLLING_ENABLED=false",
+      "camunda.process-test.connectors-env-vars.CONNECTOR_OUTBOUND_DISABLED=io.camunda:email:1",
+      // "camunda.process-test.connectors-env-vars.CONNECTOR_INBOUND_DISABLED=io.camunda:connector-email-inbound:1"
+    })
 @CamundaSpringProcessTest
 @ActiveProfiles("integration-test")
 @EnabledIfEnvironmentVariables(
@@ -44,15 +49,8 @@ import software.amazon.awssdk.regions.Region;
     })
 public class FraudDetectionIntegrationTest {
 
-  @Autowired private GreenMailBean greenMailBean;
-
   @Autowired private CamundaClient client;
   @Autowired private CamundaProcessTestContext processTestContext;
-
-  @BeforeAll
-  static void setup() {
-    Testcontainers.exposeHostPorts(3025, 3143);
-  }
 
   @BeforeEach
   void setUp() {
@@ -61,7 +59,17 @@ public class FraudDetectionIntegrationTest {
     CamundaAiAssertions.configureDefaults(
         CamundaAiAssertionDefaults.builder().judgeModel(createJudgeModel()).build());
 
-    assertThat(greenMailBean.isStarted()).isTrue();
+    // mock connectors
+    processTestContext
+        .mockJobWorker("io.camunda:email:1")
+        .thenComplete(
+            Map.of(
+                "emailSent",
+                Map.of(
+                    "messageId",
+                    "1",
+                    "body",
+                    "Dear user, we have detected fraud in your submission. Please state your opinion!")));
   }
 
   private ChatModel createJudgeModel() {
@@ -83,6 +91,7 @@ public class FraudDetectionIntegrationTest {
 
   @Test
   void executesFraudDetectionAgent() {
+    // given: tax return submitted
     final ProcessInstanceEvent processInstance =
         client
             .newCreateInstanceCommand()
@@ -102,6 +111,7 @@ public class FraudDetectionIntegrationTest {
             .send()
             .join();
 
+    // case 1: request additional information via e-mail and receive user reply
     CamundaAssert.assertThat(processInstance)
         .hasCompletedElements(ElementSelectors.byName("Send inquiry e-mail"));
 
@@ -128,12 +138,28 @@ public class FraudDetectionIntegrationTest {
                   - OPTIONAL: a remark regarding the John Doe name being generic
                   """);
 
+    CamundaAssert.assertThat(processInstance)
+        .hasActiveElements(ElementSelectors.byName("User response received"));
+
+    client
+        .newPublishMessageCommand()
+        .messageName("ba04712f-eae7-433a-9dd4-c56286e65940")
+        .correlationKey("1")
+        .variables(Map.of("plainTextBody", "I did not commit fraud!"))
+        .send()
+        .join();
+
+    CamundaAssert.assertThat(processInstance)
+        .hasCompletedElements(ElementSelectors.byName("User response received"));
+
+    // case 2: call on expert analysis and detect fraud
     assertThatUserTask(byTaskName("Call On External Advisor")).isCreated();
 
     processTestContext.completeUserTask(
-            byTaskName("Call On External Advisor"),
-            Map.of("expertAnalysis", "Don't bother me", "fraudDetected", true));
+        byTaskName("Call On External Advisor"),
+        Map.of("expertAnalysis", "Don't bother me", "fraudDetected", true));
 
+    // then: verify that fraud is detected
     CamundaAssert.assertThat(processInstance)
         .isCompleted()
         .hasCompletedElements(ElementSelectors.byName("Fraud is detected"));
