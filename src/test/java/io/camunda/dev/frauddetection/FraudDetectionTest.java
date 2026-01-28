@@ -12,10 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.ThrowingConsumer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -32,10 +29,10 @@ public class FraudDetectionTest {
   @Test
   void detectsFraudOnExpertAnalysis_whenExpertDetectsFraud() throws Throwable {
     // given
-    mockEmailSending();
-    mockFraudDetection();
-    mockJudgeInteraction();
-    mockAiAgentInteraction();
+    emailAsksForReasoningAboutTransactions();
+    fraudDetectionDoesNotDetectFraud();
+    judgeRequestsFurtherFeedbackTwoTimes();
+    aiAgentTraversesToolsUntilFraudDetection();
 
     // when
     final ProcessInstanceEvent processInstance = deployProcess();
@@ -57,7 +54,7 @@ public class FraudDetectionTest {
     });
   }
 
-  private void mockAiAgentInteraction() {
+  private void aiAgentTraversesToolsUntilFraudDetection() {
     var aiAgentChain =
         AiAgentResultHandler.with(this::callExternalAdvisor)
             .then(this::finalize)
@@ -72,7 +69,7 @@ public class FraudDetectionTest {
                 jobClient.newCompleteCommand(job).withResult(aiAgentChain).send().join());
   }
 
-  private void mockJudgeInteraction() {
+  private void judgeRequestsFurtherFeedbackTwoTimes() {
     var judgeCall = new AtomicInteger(0);
     processTestContext
         .mockJobWorker("io.camunda.agenticai:aiagent:1")
@@ -88,7 +85,7 @@ public class FraudDetectionTest {
                     .join());
   }
 
-  private void mockFraudDetection() {
+  private void fraudDetectionDoesNotDetectFraud() {
     processTestContext
         .mockJobWorker("io.camunda:http-json:1")
         .thenComplete(
@@ -99,7 +96,7 @@ public class FraudDetectionTest {
                 "After analyzing the transactions, I found several indicators of fraud."));
   }
 
-  private void mockEmailSending() {
+  private void emailAsksForReasoningAboutTransactions() {
     processTestContext
         .mockJobWorker("io.camunda:email:1")
             .thenComplete(Map.of(
