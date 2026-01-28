@@ -1,4 +1,4 @@
-package io.camunda.dev.frauddetection.cpt;
+package io.camunda.dev.frauddetection.cpt.extensions;
 
 import io.camunda.client.api.response.ProcessInstanceEvent;
 import io.camunda.process.test.api.CamundaProcessTestContext;

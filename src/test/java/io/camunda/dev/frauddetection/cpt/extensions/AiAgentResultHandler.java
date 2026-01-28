@@ -1,7 +1,8 @@
-package io.camunda.dev.frauddetection.cpt;
+package io.camunda.dev.frauddetection.cpt.extensions;
 
 import io.camunda.client.api.command.CompleteJobCommandStep1;
 import io.camunda.client.api.command.CompleteJobResult;
+import io.camunda.client.api.worker.JobHandler;
 
 import java.util.LinkedList;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -27,9 +28,14 @@ public class AiAgentResultHandler {
     return this;
   }
 
-  public Function<CompleteJobCommandStep1.CompleteJobCommandJobResultStep, CompleteJobResult>
-      build() {
+  public JobHandler wire() {
     var callCounter = new AtomicInteger(0);
-    return result -> resultHandlers.get(callCounter.getAndIncrement()).apply(result);
+    return (jobClient, job) -> {
+      jobClient
+          .newCompleteCommand(job)
+          .withResult(result -> resultHandlers.get(callCounter.getAndIncrement()).apply(result))
+          .send()
+          .join();
+    };
   }
 }

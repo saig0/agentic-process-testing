@@ -4,8 +4,9 @@ import io.camunda.client.CamundaClient;
 import io.camunda.client.api.command.CompleteAdHocSubProcessResultStep1;
 import io.camunda.client.api.command.CompleteJobCommandStep1;
 import io.camunda.client.api.response.ProcessInstanceEvent;
-import io.camunda.dev.frauddetection.cpt.AiAgentProcessInstance;
-import io.camunda.dev.frauddetection.cpt.AiAgentResultHandler;
+import io.camunda.dev.frauddetection.cpt.extensions.AiAgentProcessInstance;
+import io.camunda.dev.frauddetection.cpt.extensions.AiAgentResultHandler;
+import io.camunda.dev.frauddetection.cpt.extensions.FluentVariableYield;
 import io.camunda.process.test.api.CamundaAssert;
 import io.camunda.process.test.api.CamundaProcessTestContext;
 import io.camunda.process.test.api.CamundaSpringProcessTest;
@@ -15,7 +16,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static io.camunda.process.test.api.assertions.UserTaskSelectors.byElementId;
 import static org.testcontainers.shaded.org.awaitility.Awaitility.await;
@@ -58,32 +58,19 @@ public class FraudDetectionTest {
   }
 
   private void aiAgentTraversesToolsUntilFraudDetection() {
-    var aiAgentChain =
-        AiAgentResultHandler.with(this::callExternalAdvisor)
-            .then(this::finalize)
-            .then(this::generateEmailInquiry)
-            .then(this::finalize)
-            .then(this::detectFraud)
-            .build();
     AiAgentProcessInstance.mockAiAigentSubProcessType(processTestContext)
         .withHandler(
-            (jobClient, job) ->
-                jobClient.newCompleteCommand(job).withResult(aiAgentChain).send().join());
+            AiAgentResultHandler.with(this::callExternalAdvisor)
+                .then(this::finalize)
+                .then(this::generateEmailInquiry)
+                .then(this::finalize)
+                .then(this::detectFraud)
+                .wire());
   }
 
   private void judgeRequestsFurtherFeedbackTwoTimes() {
-    var judgeCall = new AtomicInteger(0);
     AiAgentProcessInstance.mockAiAgentTask(processTestContext)
-        .withHandler(
-            (jobClient, job) ->
-                jobClient
-                    .newCompleteCommand(job)
-                    .variables(
-                        judgeCall.getAndIncrement() < 2
-                            ? Map.of("finalCheck", "no")
-                            : Map.of("finalCheck", "yes"))
-                    .send()
-                    .join());
+        .withHandler(FluentVariableYield.yieldingVariables("finalCheck", "no", "no", "yes"));
   }
 
   private void fraudDetectionDoesNotDetectFraud() {
