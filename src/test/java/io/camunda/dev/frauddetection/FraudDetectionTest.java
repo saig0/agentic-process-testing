@@ -4,6 +4,7 @@ import io.camunda.client.CamundaClient;
 import io.camunda.client.api.command.CompleteAdHocSubProcessResultStep1;
 import io.camunda.client.api.command.CompleteJobCommandStep1;
 import io.camunda.client.api.response.ProcessInstanceEvent;
+import io.camunda.dev.frauddetection.cpt.AiAgentProcessInstance;
 import io.camunda.dev.frauddetection.cpt.AiAgentResultHandler;
 import io.camunda.process.test.api.CamundaAssert;
 import io.camunda.process.test.api.CamundaProcessTestContext;
@@ -42,16 +43,18 @@ public class FraudDetectionTest {
     assertProcessIsWaitingForUserMessage(processInstance);
 
     // then
-    whenUserMessageIsReceived(processInstance, pi -> {
-        assert pi != null;
-        CamundaAssert.assertThat(pi)
+    whenUserMessageIsReceived(
+        processInstance,
+        pi -> {
+          assert pi != null;
+          CamundaAssert.assertThat(pi)
               .isCompleted()
               .hasCompletedElement("Fraud_Detection_Agent", 2)
               .hasCompletedElements("CallOnExternalAdvisor", "Event_0ut60ps")
               .hasTerminatedElement("Fraud_Detection_Agent", 1)
               .hasTerminatedElements("Event_0gnk722")
               .hasCompletedElements("Activity_0o48wy2", "Event_1sxkleb");
-    });
+        });
   }
 
   private void aiAgentTraversesToolsUntilFraudDetection() {
@@ -62,8 +65,7 @@ public class FraudDetectionTest {
             .then(this::finalize)
             .then(this::detectFraud)
             .build();
-    processTestContext
-        .mockJobWorker("io.camunda.agenticai:aiagent-job-worker:1")
+    AiAgentProcessInstance.mockAiAigentSubProcessType(processTestContext)
         .withHandler(
             (jobClient, job) ->
                 jobClient.newCompleteCommand(job).withResult(aiAgentChain).send().join());
@@ -71,8 +73,7 @@ public class FraudDetectionTest {
 
   private void judgeRequestsFurtherFeedbackTwoTimes() {
     var judgeCall = new AtomicInteger(0);
-    processTestContext
-        .mockJobWorker("io.camunda.agenticai:aiagent:1")
+    AiAgentProcessInstance.mockAiAgentTask(processTestContext)
         .withHandler(
             (jobClient, job) ->
                 jobClient
@@ -99,13 +100,14 @@ public class FraudDetectionTest {
   private void emailAsksForReasoningAboutTransactions() {
     processTestContext
         .mockJobWorker("io.camunda:email:1")
-            .thenComplete(Map.of(
-                    "emailSent",
-                    Map.of(
-                            "messageId",
-                            "1",
-                            "body",
-                            "Dear user, we have detected fraud in your submission. Please state your opinion!")));
+        .thenComplete(
+            Map.of(
+                "emailSent",
+                Map.of(
+                    "messageId",
+                    "1",
+                    "body",
+                    "Dear user, we have detected fraud in your submission. Please state your opinion!")));
   }
 
   private static void assertExternalAdvisorIsConsulted(ProcessInstanceEvent processInstance) {
@@ -196,7 +198,9 @@ public class FraudDetectionTest {
     return resultStep.forAdHocSubProcess().completionConditionFulfilled(true);
   }
 
-  private void whenUserMessageIsReceived(ProcessInstanceEvent event, ThrowingConsumer<ProcessInstanceEvent> assertions) throws Throwable {
+  private void whenUserMessageIsReceived(
+      ProcessInstanceEvent event, ThrowingConsumer<ProcessInstanceEvent> assertions)
+      throws Throwable {
     publishUserMessage();
     assertions.accept(event);
   }
