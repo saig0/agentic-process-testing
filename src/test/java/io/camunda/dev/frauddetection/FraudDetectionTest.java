@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static io.camunda.process.test.api.assertions.UserTaskSelectors.byElementId;
+import static org.testcontainers.shaded.org.awaitility.Awaitility.await;
 
 @SpringBootTest(properties = {"camunda.client.worker.defaults.enabled=false"})
 @CamundaSpringProcessTest
@@ -29,7 +30,21 @@ public class FraudDetectionTest {
 
   @Test
   void detectsFraudOnExpertAnalysis_whenExpertDetectsFraud() {
-    // given process definition is deployed
+    // given
+    processTestContext
+        .mockJobWorker("io.camunda:email:1")
+        .withHandler(
+            (jobClient, job) ->
+                jobClient
+                    .newCompleteCommand(job)
+                    .variables(
+                        Map.of("emailSent", Map.of(
+                            "messageId",
+                            "1",
+                            "body",
+                            "Dear user, we have detected fraud in your submission. Please state your opinion!")))
+                    .send()
+                    .join());
     processTestContext
         .mockJobWorker("io.camunda:http-json:1")
         .withHandler(
@@ -45,21 +60,34 @@ public class FraudDetectionTest {
                   .join();
             });
 
-    processTestContext.mockJobWorker("io.camunda.agenticai:aiagent:1")
-            .withHandler( (jobClient, job) -> jobClient.newCompleteCommand(job)
-                    .variables(Map.of("finalCheck", "yes")).send().join());
+    var judgeCall = new AtomicInteger(0);
+    processTestContext
+        .mockJobWorker("io.camunda.agenticai:aiagent:1")
+        .withHandler(
+            (jobClient, job) ->
+                jobClient
+                    .newCompleteCommand(job)
+                    .variables(
+                        judgeCall.getAndIncrement() < 2
+                            ? Map.of("finalCheck", "no")
+                            : Map.of("finalCheck", "yes"))
+                    .send()
+                    .join());
 
-    var aiAgentChain = AiAgentResultHandler.with(this::callExternalAdvisor)
-                          .then(this::finalize)
+    var aiAgentChain =
+        AiAgentResultHandler.with(this::callExternalAdvisor)
+            .then(this::finalize)
+            .then(this::generateEmailInquiry)
+            .then(this::finalize)
+            .then(this::detectFraud)
             .build();
+
     processTestContext
         .mockJobWorker("io.camunda.agenticai:aiagent-job-worker:1")
         .withHandler(
-            (jobClient, job) -> jobClient
-                .newCompleteCommand(job)
-                .withResult(aiAgentChain)
-                .send()
-                .join());
+            (jobClient, job) ->
+                jobClient.newCompleteCommand(job).withResult(aiAgentChain).send().join())
+            ;
 
     // when
     final ProcessInstanceEvent processInstance =
@@ -81,18 +109,27 @@ public class FraudDetectionTest {
             "expertAnalysis",
             "There is the best fraud that we have ever seen!"));
 
-    //    CamundaAssert.assertThat(processInstance).hasActiveElement("EmailInquiry", 1);
 
-    //    processTestContext.completeUserTask(
-    //        byElementId("CallOnExternalAdvisor"),
-    //        Map.of(
-    //            "fraudDetected", false, "expertAnalysis", "There is the best fraud we have ever
-    // seen!"));
+    await().pollInSameThread().untilAsserted(() -> {
+        CamundaAssert.assertThat(processInstance).hasActiveElement("Event_1gwy74w", 1);
+    });
+
+    client
+        .newPublishMessageCommand()
+        .messageName("ba04712f-eae7-433a-9dd4-c56286e65940")
+        .correlationKey("1")
+        .variables(Map.of("plainTextBody", "I did not commit fraud!"))
+        .send()
+        .join();
 
     // then
     CamundaAssert.assertThat(processInstance)
         .isCompleted()
-        .hasCompletedElements("CallOnExternalAdvisor", "Event_0ut60ps", "Fraud_Detection_Agent");
+            .hasCompletedElement("Fraud_Detection_Agent", 2)
+        .hasCompletedElements("CallOnExternalAdvisor", "Event_0ut60ps")
+            .hasTerminatedElement("Fraud_Detection_Agent", 1)
+            .hasTerminatedElements("Event_0gnk722")
+            .hasCompletedElements("Activity_0o48wy2", "Event_1sxkleb");
   }
 
   private CompleteAdHocSubProcessResultStep1 callExternalAdvisor(
@@ -122,6 +159,14 @@ public class FraudDetectionTest {
                 "There are a lot of unusual transactions this year.",
                 "whatToClarify",
                 "I the submitter lying to us?"))
+        .completionConditionFulfilled(false);
+  }
+
+  private CompleteAdHocSubProcessResultStep1 detectFraud(
+      CompleteJobCommandStep1.CompleteJobCommandJobResultStep resultStep) {
+    return resultStep
+        .forAdHocSubProcess()
+        .activateElement("FraudDetected")
         .completionConditionFulfilled(false);
   }
 
