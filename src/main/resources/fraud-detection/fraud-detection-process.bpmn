@@ -118,8 +118,8 @@
           <zeebe:properties>
             <zeebe:property name="inbound.type" value="io.camunda:connector-email-inbound:1" />
             <zeebe:property name="authentication.type" value="simple" />
-            <zeebe:property name="authentication.username" />
-            <zeebe:property name="authentication.password" />
+            <zeebe:property name="authentication.username" value="{{secrets.CAMUNDA_SAMPLE_AGENT_EMAIL_USERNAME}}" />
+            <zeebe:property name="authentication.password" value="{{secrets.CAMUNDA_SAMPLE_AGENT_EMAIL_PASSWORD}}" />
             <zeebe:property name="data.imapConfig.imapHost" value="{{secrets.CAMUNDA_SAMPLE_AGENT_EMAIL_IMAP_HOST}}" />
             <zeebe:property name="data.imapConfig.imapPort" value="{{secrets.CAMUNDA_SAMPLE_AGENT_EMAIL_IMAP_PORT}}" />
             <zeebe:property name="data.imapConfig.imapCryptographicProtocol" value="NONE" />
@@ -127,12 +127,13 @@
             <zeebe:property name="data.pollingConfigDiscriminator" value="unseenPollingConfig" />
             <zeebe:property name="data.pollingConfig.handlingStrategy" value="READ" />
             <zeebe:property name="activationCondition" value="=not(is empty(headers[key = &#34;In-Reply-To&#34;]))" />
-            <zeebe:property name="consumeUnmatchedEvents" value="true" />
+            <zeebe:property name="consumeUnmatchedEvents" value="false" />
             <zeebe:property name="correlationKeyExpression" value="=headers[key = &#34;In-Reply-To&#34;][1].value" />
-            <zeebe:property name="deduplicationModeManualFlag" value="false" />
-            <zeebe:property name="deduplicationMode" value="AUTO" />
+            <zeebe:property name="deduplicationModeManualFlag" value="true" />
+            <zeebe:property name="deduplicationId" value="sample-agent-reply-to-emails" />
+            <zeebe:property name="deduplicationMode" value="MANUAL" />
             <zeebe:property name="resultVariable" value="" />
-            <zeebe:property name="resultExpression" value="={&#10;  toolCallResult: plainTextBody,&#10;}" />
+            <zeebe:property name="resultExpression" value="={&#10;  toolCallResult: plainTextBody&#10;}" />
           </zeebe:properties>
         </bpmn:extensionElements>
         <bpmn:incoming>Flow_0uz92it</bpmn:incoming>
@@ -213,7 +214,7 @@
   </bpmn:process>
   <bpmn:escalation id="Escalation_3eekq60" name="FraudDetected" escalationCode="FraudDetected" />
   <bpmn:error id="Error_1vkip6r" name="Fraud Error" errorCode="Fraud_Error" />
-  <bpmn:message id="Message_10q7s3s" name="63c3c1e2-957c-4287-86e3-87b3c0a3156f" zeebe:modelerTemplate="io.camunda.connectors.inbound.EmailIntermediate.v1">
+  <bpmn:message id="Message_10q7s3s" name="ba04712f-eae7-433a-9dd4-c56286e65940" zeebe:modelerTemplate="io.camunda.connectors.inbound.EmailIntermediate.v1">
     <bpmn:extensionElements>
       <zeebe:subscription correlationKey="=emailSent.messageId" />
     </bpmn:extensionElements>
