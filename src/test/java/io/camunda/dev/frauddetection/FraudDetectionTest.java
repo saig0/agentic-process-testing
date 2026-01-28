@@ -9,6 +9,7 @@ import io.camunda.process.test.api.CamundaAssert;
 import io.camunda.process.test.api.CamundaProcessTestContext;
 import io.camunda.process.test.api.CamundaSpringProcessTest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.ThrowingConsumer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -29,7 +30,7 @@ public class FraudDetectionTest {
   @Autowired private CamundaProcessTestContext processTestContext;
 
   @Test
-  void detectsFraudOnExpertAnalysis_whenExpertDetectsFraud() {
+  void detectsFraudOnExpertAnalysis_whenExpertDetectsFraud() throws Throwable {
     // given
     mockEmailSending();
     mockFraudDetection();
@@ -43,16 +44,17 @@ public class FraudDetectionTest {
     userSubmitsNoFraudDetected();
     assertProcessIsWaitingForUserMessage(processInstance);
 
-    publishUserMessage();
-
     // then
-    CamundaAssert.assertThat(processInstance)
-        .isCompleted()
-        .hasCompletedElement("Fraud_Detection_Agent", 2)
-        .hasCompletedElements("CallOnExternalAdvisor", "Event_0ut60ps")
-        .hasTerminatedElement("Fraud_Detection_Agent", 1)
-        .hasTerminatedElements("Event_0gnk722")
-        .hasCompletedElements("Activity_0o48wy2", "Event_1sxkleb");
+    whenUserMessageIsReceived(processInstance, pi -> {
+        assert pi != null;
+        CamundaAssert.assertThat(pi)
+              .isCompleted()
+              .hasCompletedElement("Fraud_Detection_Agent", 2)
+              .hasCompletedElements("CallOnExternalAdvisor", "Event_0ut60ps")
+              .hasTerminatedElement("Fraud_Detection_Agent", 1)
+              .hasTerminatedElements("Event_0gnk722")
+              .hasCompletedElements("Activity_0o48wy2", "Event_1sxkleb");
+    });
   }
 
   private void mockAiAgentInteraction() {
@@ -195,5 +197,10 @@ public class FraudDetectionTest {
   private CompleteAdHocSubProcessResultStep1 finalize(
       CompleteJobCommandStep1.CompleteJobCommandJobResultStep resultStep) {
     return resultStep.forAdHocSubProcess().completionConditionFulfilled(true);
+  }
+
+  private void whenUserMessageIsReceived(ProcessInstanceEvent event, ThrowingConsumer<ProcessInstanceEvent> assertions) throws Throwable {
+    publishUserMessage();
+    assertions.accept(event);
   }
 }
