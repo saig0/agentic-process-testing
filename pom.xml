@@ -37,6 +37,10 @@
     </dependencyManagement>
 
     <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
         <!-- Camunda Process Test Spring (test scope) -->
         <dependency>
             <groupId>io.camunda</groupId>
