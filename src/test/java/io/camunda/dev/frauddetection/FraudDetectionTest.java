@@ -31,35 +31,46 @@ public class FraudDetectionTest {
   @Test
   void detectsFraudOnExpertAnalysis_whenExpertDetectsFraud() {
     // given
+    mockEmailSending();
+    mockFraudDetection();
+    mockJudgeInteraction();
+    mockAiAgentInteraction();
+
+    // when
+    final ProcessInstanceEvent processInstance = deployProcess();
+
+    assertExternalAdvisorIsConsulted(processInstance);
+    userSubmitsNoFraudDetected();
+    assertProcessIsWaitingForUserMessage(processInstance);
+
+    publishUserMessage();
+
+    // then
+    CamundaAssert.assertThat(processInstance)
+        .isCompleted()
+        .hasCompletedElement("Fraud_Detection_Agent", 2)
+        .hasCompletedElements("CallOnExternalAdvisor", "Event_0ut60ps")
+        .hasTerminatedElement("Fraud_Detection_Agent", 1)
+        .hasTerminatedElements("Event_0gnk722")
+        .hasCompletedElements("Activity_0o48wy2", "Event_1sxkleb");
+  }
+
+  private void mockAiAgentInteraction() {
+    var aiAgentChain =
+        AiAgentResultHandler.with(this::callExternalAdvisor)
+            .then(this::finalize)
+            .then(this::generateEmailInquiry)
+            .then(this::finalize)
+            .then(this::detectFraud)
+            .build();
     processTestContext
-        .mockJobWorker("io.camunda:email:1")
+        .mockJobWorker("io.camunda.agenticai:aiagent-job-worker:1")
         .withHandler(
             (jobClient, job) ->
-                jobClient
-                    .newCompleteCommand(job)
-                    .variables(
-                        Map.of("emailSent", Map.of(
-                            "messageId",
-                            "1",
-                            "body",
-                            "Dear user, we have detected fraud in your submission. Please state your opinion!")))
-                    .send()
-                    .join());
-    processTestContext
-        .mockJobWorker("io.camunda:http-json:1")
-        .withHandler(
-            (jobClient, job) -> {
-              jobClient
-                  .newCompleteCommand(job)
-                  .variables(
-                      Map.of(
-                          "fraudDetected", "false",
-                          "expertAnalysis",
-                              "After analyzing the transactions, I found several indicators of fraud."))
-                  .send()
-                  .join();
-            });
+                jobClient.newCompleteCommand(job).withResult(aiAgentChain).send().join());
+  }
 
+  private void mockJudgeInteraction() {
     var judgeCall = new AtomicInteger(0);
     processTestContext
         .mockJobWorker("io.camunda.agenticai:aiagent:1")
@@ -73,23 +84,36 @@ public class FraudDetectionTest {
                             : Map.of("finalCheck", "yes"))
                     .send()
                     .join());
+  }
 
-    var aiAgentChain =
-        AiAgentResultHandler.with(this::callExternalAdvisor)
-            .then(this::finalize)
-            .then(this::generateEmailInquiry)
-            .then(this::finalize)
-            .then(this::detectFraud)
-            .build();
-
+  private void mockFraudDetection() {
     processTestContext
-        .mockJobWorker("io.camunda.agenticai:aiagent-job-worker:1")
-        .withHandler(
-            (jobClient, job) ->
-                jobClient.newCompleteCommand(job).withResult(aiAgentChain).send().join())
-            ;
+        .mockJobWorker("io.camunda:http-json:1")
+        .thenComplete(
+            Map.of(
+                "fraudDetected",
+                "false",
+                "expertAnalysis",
+                "After analyzing the transactions, I found several indicators of fraud."));
+  }
 
-    // when
+  private void mockEmailSending() {
+    processTestContext
+        .mockJobWorker("io.camunda:email:1")
+            .thenComplete(Map.of(
+                    "emailSent",
+                    Map.of(
+                            "messageId",
+                            "1",
+                            "body",
+                            "Dear user, we have detected fraud in your submission. Please state your opinion!")));
+  }
+
+  private static void assertExternalAdvisorIsConsulted(ProcessInstanceEvent processInstance) {
+    CamundaAssert.assertThat(processInstance).hasActiveElement("CallOnExternalAdvisor", 1);
+  }
+
+  private ProcessInstanceEvent deployProcess() {
     final ProcessInstanceEvent processInstance =
         client
             .newCreateInstanceCommand()
@@ -98,9 +122,10 @@ public class FraudDetectionTest {
             .variables(Map.of("taxSubmission", "ABC"))
             .send()
             .join();
+    return processInstance;
+  }
 
-    CamundaAssert.assertThat(processInstance).hasActiveElement("CallOnExternalAdvisor", 1);
-
+  private void userSubmitsNoFraudDetected() {
     processTestContext.completeUserTask(
         byElementId("CallOnExternalAdvisor"),
         Map.of(
@@ -108,12 +133,9 @@ public class FraudDetectionTest {
             false,
             "expertAnalysis",
             "There is the best fraud that we have ever seen!"));
+  }
 
-
-    await().pollInSameThread().untilAsserted(() -> {
-        CamundaAssert.assertThat(processInstance).hasActiveElement("Event_1gwy74w", 1);
-    });
-
+  private void publishUserMessage() {
     client
         .newPublishMessageCommand()
         .messageName("ba04712f-eae7-433a-9dd4-c56286e65940")
@@ -121,15 +143,15 @@ public class FraudDetectionTest {
         .variables(Map.of("plainTextBody", "I did not commit fraud!"))
         .send()
         .join();
+  }
 
-    // then
-    CamundaAssert.assertThat(processInstance)
-        .isCompleted()
-            .hasCompletedElement("Fraud_Detection_Agent", 2)
-        .hasCompletedElements("CallOnExternalAdvisor", "Event_0ut60ps")
-            .hasTerminatedElement("Fraud_Detection_Agent", 1)
-            .hasTerminatedElements("Event_0gnk722")
-            .hasCompletedElements("Activity_0o48wy2", "Event_1sxkleb");
+  private static void assertProcessIsWaitingForUserMessage(ProcessInstanceEvent processInstance) {
+    await()
+        .pollInSameThread()
+        .untilAsserted(
+            () -> {
+              CamundaAssert.assertThat(processInstance).hasActiveElement("Event_1gwy74w", 1);
+            });
   }
 
   private CompleteAdHocSubProcessResultStep1 callExternalAdvisor(
