@@ -37,6 +37,13 @@
     </dependencyManagement>
 
     <dependencies>
+
+        <!-- Add Spring Boot Starter for Actuator as workaround to run with Java 25 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>io.camunda</groupId>
             <artifactId>camunda-spring-boot-starter</artifactId>
