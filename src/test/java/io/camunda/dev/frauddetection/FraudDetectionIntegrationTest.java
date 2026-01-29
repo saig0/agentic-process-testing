@@ -13,11 +13,14 @@ import io.camunda.dev.assertions.ai.SemanticOptions;
 import io.camunda.process.test.api.CamundaAssert;
 import io.camunda.process.test.api.CamundaProcessTestContext;
 import io.camunda.process.test.api.CamundaSpringProcessTest;
+import io.camunda.process.test.api.CptAssertHelper;
 import io.camunda.process.test.api.assertions.ElementSelectors;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
+
+import io.camunda.process.test.api.assertions.ProcessInstanceSelectors;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -59,7 +62,7 @@ public class FraudDetectionIntegrationTest {
     CamundaAiAssertions.configureDefaults(
         CamundaAiAssertionDefaults.builder().judgeModel(createJudgeModel()).build());
 
-    // mock connectors
+    // mock mail interactions
     processTestContext
         .mockJobWorker("io.camunda:email:1")
         .thenComplete(
@@ -70,6 +73,37 @@ public class FraudDetectionIntegrationTest {
                     "1",
                     "body",
                     "Dear user, we have detected fraud in your submission. Please state your opinion!")));
+
+    CptAssertHelper.scenario(client)
+        .when(
+            () -> {
+              CamundaAssert.assertThatProcessInstance(
+                      ProcessInstanceSelectors.byProcessId("fraud-detection-process"))
+                  .hasActiveElements(ElementSelectors.byName("User response received"));
+            })
+        .then(
+            () -> {
+              client
+                  .newPublishMessageCommand()
+                  .messageName("ba04712f-eae7-433a-9dd4-c56286e65940")
+                  .correlationKey("1")
+                  .variables(Map.of("plainTextBody", "I did not commit fraud!"))
+                  .send()
+                  .join();
+            });
+
+    // mock call to external advisor
+    CptAssertHelper.scenario(client)
+        .when(
+            () -> {
+              assertThatUserTask(byTaskName("Call On External Advisor")).isCreated();
+            })
+        .then(
+            () -> {
+              processTestContext.completeUserTask(
+                  byTaskName("Call On External Advisor"),
+                  Map.of("expertAnalysis", "Don't bother me", "fraudDetected", true));
+            });
   }
 
   private ChatModel createJudgeModel() {
@@ -111,9 +145,40 @@ public class FraudDetectionIntegrationTest {
             .send()
             .join();
 
-    // case 1: request additional information via e-mail and receive user reply
+    // then: verify that fraud is detected
     CamundaAssert.assertThat(processInstance)
-        .hasCompletedElements(ElementSelectors.byName("Send inquiry e-mail"));
+        .isCompleted()
+        .hasCompletedElements(ElementSelectors.byName("Fraud is detected"));
+  }
+
+  @Test
+  void verifyFraudDetectionAgentEmail() {
+    // given: tax return submitted
+    final ProcessInstanceEvent processInstance =
+        client
+            .newCreateInstanceCommand()
+            .bpmnProcessId("fraud-detection-process")
+            .latestVersion()
+            .variables(
+                Map.of(
+                    "taxSubmission",
+                    Map.ofEntries(
+                        Map.entry("fullName", "John Doe"),
+                        Map.entry("dob", "1980-01-14"),
+                        Map.entry("emailAddress", "demo@camunda.com"),
+                        Map.entry("totalIncome", 100000),
+                        Map.entry("totalExpenses", 10000),
+                        Map.entry("largePurchases", List.of("stocks")),
+                        Map.entry("charitableDonations", "None"))))
+            .send()
+            .join();
+
+    // then: verify that fraud is detected
+    CamundaAssert.assertThat(processInstance)
+        .isCompleted()
+        .hasCompletedElements(
+            ElementSelectors.byName("Fraud is detected"),
+            ElementSelectors.byName("Send inquiry e-mail"));
 
     AtomicReference<String> emailBody = new AtomicReference<>();
     CamundaAssert.assertThat(processInstance)
@@ -131,37 +196,11 @@ public class FraudDetectionIntegrationTest {
         .usingOptions(SemanticOptions.defaults().withJudgeMinScore(0.7))
         .matchesExpectationWithJudge(
             """
-                  An email text asking the user about at least one of the following:
+                                          An email text asking the user about at least one of the following:
 
-                  - the discrepancy between yearly income and expenses
-                  - clarification on the stock purchases
-                  - OPTIONAL: a remark regarding the John Doe name being generic
-                  """);
-
-    CamundaAssert.assertThat(processInstance)
-        .hasActiveElements(ElementSelectors.byName("User response received"));
-
-    client
-        .newPublishMessageCommand()
-        .messageName("ba04712f-eae7-433a-9dd4-c56286e65940")
-        .correlationKey("1")
-        .variables(Map.of("plainTextBody", "I did not commit fraud!"))
-        .send()
-        .join();
-
-    CamundaAssert.assertThat(processInstance)
-        .hasCompletedElements(ElementSelectors.byName("User response received"));
-
-    // case 2: call on expert analysis and detect fraud
-    assertThatUserTask(byTaskName("Call On External Advisor")).isCreated();
-
-    processTestContext.completeUserTask(
-        byTaskName("Call On External Advisor"),
-        Map.of("expertAnalysis", "Don't bother me", "fraudDetected", true));
-
-    // then: verify that fraud is detected
-    CamundaAssert.assertThat(processInstance)
-        .isCompleted()
-        .hasCompletedElements(ElementSelectors.byName("Fraud is detected"));
+                                          - the discrepancy between yearly income and expenses
+                                          - clarification on the stock purchases
+                                          - OPTIONAL: a remark regarding the John Doe name being generic
+                                          """);
   }
 }
