@@ -62,7 +62,7 @@ public class FraudDetectionTest {
         .withHandler(
             AiAgentResultHandler.with(this::callExternalAdvisor)
                 .then(this::finalize)
-                .then(this::generateEmailInquiry)
+                .then(this::askUserInAnEmail)
                 .then(this::finalize)
                 .then(this::detectFraud)
                 .wire());
@@ -158,7 +158,7 @@ public class FraudDetectionTest {
         .completionConditionFulfilled(false);
   }
 
-  private CompleteAdHocSubProcessResultStep1 generateEmailInquiry(
+  private CompleteAdHocSubProcessResultStep1 askUserInAnEmail(
       CompleteJobCommandStep1.CompleteJobCommandJobResultStep resultStep) {
     return resultStep
         .forAdHocSubProcess()
