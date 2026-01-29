@@ -17,7 +17,6 @@ import io.camunda.process.test.api.assertions.ElementSelectors;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicReference;
 
 import io.camunda.process.test.api.assertions.ProcessInstanceSelectors;
 import org.junit.jupiter.api.BeforeEach;
@@ -183,25 +182,27 @@ public class FraudDetectionIntegrationTest {
     CamundaAssert.assertThat(processInstance)
         .hasCompletedElements(ElementSelectors.byName("Send inquiry e-mail"));
 
-    AtomicReference<String> emailBody = new AtomicReference<>();
+    CamundaAssert.setAssertionTimeout(Duration.ofMinutes(2));
+
     CamundaAssert.assertThat(processInstance)
         .hasLocalVariableSatisfies(
             ElementSelectors.byId("Fraud_Detection_Agent#innerInstance"),
             "toolCall",
-            Map.class,
+            MailToolCall.class,
             toolCall -> {
-              assertThat(toolCall).isNotEmpty().containsKey("emailBody");
-              emailBody.set((String) toolCall.get("emailBody"));
+              assertThat(toolCall.emailBody).isNotEmpty();
+
+              CamundaAiAssertions.assertThat(toolCall.emailBody)
+                  .usingOptions(SemanticOptions.defaults().withJudgeMinScore(0.7))
+                  .matchesExpectationWithJudge(
+                      """
+                                  An email text asking the user about at least one of the following:
+
+                                  - the discrepancy between yearly income and expenses
+                                  - clarification on the stock purchases
+                                  """);
             });
-
-    CamundaAiAssertions.assertThat(emailBody.get())
-        .usingOptions(SemanticOptions.defaults().withJudgeMinScore(0.7))
-        .matchesExpectationWithJudge(
-            """
-              An email text asking the user about at least one of the following:
-
-              - the discrepancy between yearly income and expenses
-              - clarification on the stock purchases
-              """);
   }
+
+  public record MailToolCall(String emailBody) {}
 }
