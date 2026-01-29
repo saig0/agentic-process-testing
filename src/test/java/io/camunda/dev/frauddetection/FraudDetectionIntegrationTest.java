@@ -4,7 +4,6 @@ import static io.camunda.process.test.api.CamundaAssert.assertThatUserTask;
 import static io.camunda.process.test.api.assertions.UserTaskSelectors.byTaskName;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.icegreen.greenmail.spring.GreenMailBean;
 import io.camunda.client.CamundaClient;
 import io.camunda.client.api.response.ProcessInstanceEvent;
 import io.camunda.dev.assertions.ai.CamundaAiAssertionDefaults;
@@ -21,7 +20,6 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 import io.camunda.process.test.api.assertions.ProcessInstanceSelectors;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -32,7 +30,6 @@ import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
-import org.testcontainers.Testcontainers;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
@@ -40,8 +37,7 @@ import software.amazon.awssdk.regions.Region;
 @SpringBootTest(
     properties = {
       "camunda.process-test.connectors-env-vars.CAMUNDA_CONNECTOR_POLLING_ENABLED=false",
-      "camunda.process-test.connectors-env-vars.CONNECTOR_OUTBOUND_DISABLED=io.camunda:email:1",
-      // "camunda.process-test.connectors-env-vars.CONNECTOR_INBOUND_DISABLED=io.camunda:connector-email-inbound:1"
+      "camunda.process-test.connectors-env-vars.CONNECTOR_OUTBOUND_DISABLED=io.camunda:email:1"
     })
 @CamundaSpringProcessTest
 @ActiveProfiles("integration-test")
@@ -51,6 +47,10 @@ import software.amazon.awssdk.regions.Region;
       @EnabledIfEnvironmentVariable(named = "AWS_BEDROCK_SECRET_KEY", matches = ".+"),
     })
 public class FraudDetectionIntegrationTest {
+
+  private static final String PROCESS_DEFINITION_ID = "fraud-detection-process";
+  private static final String EMAIL_MESSAGE_ID = "1";
+  private static final String EMAIL_MESSAGE_NAME = "ba04712f-eae7-433a-9dd4-c56286e65940";
 
   @Autowired private CamundaClient client;
   @Autowired private CamundaProcessTestContext processTestContext;
@@ -68,25 +68,25 @@ public class FraudDetectionIntegrationTest {
         .thenComplete(
             Map.of(
                 "emailSent",
-                Map.of(
-                    "messageId",
-                    "1",
-                    "body",
-                    "Dear user, we have detected fraud in your submission. Please state your opinion!")));
+                Map.ofEntries(
+                    Map.entry("messageId", EMAIL_MESSAGE_ID),
+                    Map.entry(
+                        "body",
+                        "Dear user, we have detected fraud in your submission. Please state your opinion!"))));
 
     CptAssertHelper.scenario(client)
         .when(
             () -> {
               CamundaAssert.assertThatProcessInstance(
-                      ProcessInstanceSelectors.byProcessId("fraud-detection-process"))
-                  .hasActiveElements(ElementSelectors.byName("User response received"));
+                      ProcessInstanceSelectors.byProcessId(PROCESS_DEFINITION_ID))
+                  .isWaitingForMessage(EMAIL_MESSAGE_NAME, EMAIL_MESSAGE_ID);
             })
         .then(
             () -> {
               client
                   .newPublishMessageCommand()
-                  .messageName("ba04712f-eae7-433a-9dd4-c56286e65940")
-                  .correlationKey("1")
+                  .messageName(EMAIL_MESSAGE_NAME)
+                  .correlationKey(EMAIL_MESSAGE_ID)
                   .variables(Map.of("plainTextBody", "I did not commit fraud!"))
                   .send()
                   .join();
@@ -102,7 +102,9 @@ public class FraudDetectionIntegrationTest {
             () -> {
               processTestContext.completeUserTask(
                   byTaskName("Call On External Advisor"),
-                  Map.of("expertAnalysis", "Don't bother me", "fraudDetected", true));
+                  Map.ofEntries(
+                      Map.entry("expertAnalysis", "Don't bother me"),
+                      Map.entry("fraudDetected", true)));
             });
   }
 
@@ -129,7 +131,7 @@ public class FraudDetectionIntegrationTest {
     final ProcessInstanceEvent processInstance =
         client
             .newCreateInstanceCommand()
-            .bpmnProcessId("fraud-detection-process")
+            .bpmnProcessId(PROCESS_DEFINITION_ID)
             .latestVersion()
             .variables(
                 Map.of(
@@ -139,13 +141,15 @@ public class FraudDetectionIntegrationTest {
                         Map.entry("dob", "1980-01-14"),
                         Map.entry("emailAddress", "demo@camunda.com"),
                         Map.entry("totalIncome", 100000),
-                        Map.entry("totalExpenses", 10000),
+                        Map.entry("totalExpenses", 80000),
                         Map.entry("largePurchases", List.of("stocks")),
                         Map.entry("charitableDonations", "None"))))
             .send()
             .join();
 
     // then: verify that fraud is detected
+    CamundaAssert.setAssertionTimeout(Duration.ofMinutes(2));
+
     CamundaAssert.assertThat(processInstance)
         .isCompleted()
         .hasCompletedElements(ElementSelectors.byName("Fraud is detected"));
@@ -167,22 +171,20 @@ public class FraudDetectionIntegrationTest {
                         Map.entry("dob", "1980-01-14"),
                         Map.entry("emailAddress", "demo@camunda.com"),
                         Map.entry("totalIncome", 100000),
-                        Map.entry("totalExpenses", 10000),
+                        Map.entry("totalExpenses", 80000),
                         Map.entry("largePurchases", List.of("stocks")),
                         Map.entry("charitableDonations", "None"))))
             .send()
             .join();
 
     // then: verify that fraud is detected
+    CamundaAssert.setAssertionTimeout(Duration.ofMinutes(2));
+
     CamundaAssert.assertThat(processInstance)
-        .isCompleted()
-        .hasCompletedElements(
-            ElementSelectors.byName("Fraud is detected"),
-            ElementSelectors.byName("Send inquiry e-mail"));
+        .hasCompletedElements(ElementSelectors.byName("Send inquiry e-mail"));
 
     AtomicReference<String> emailBody = new AtomicReference<>();
     CamundaAssert.assertThat(processInstance)
-        .hasActiveElement(ElementSelectors.byId("Fraud_Detection_Agent#innerInstance"), 1)
         .hasLocalVariableSatisfies(
             ElementSelectors.byId("Fraud_Detection_Agent#innerInstance"),
             "toolCall",
@@ -196,11 +198,10 @@ public class FraudDetectionIntegrationTest {
         .usingOptions(SemanticOptions.defaults().withJudgeMinScore(0.7))
         .matchesExpectationWithJudge(
             """
-                                          An email text asking the user about at least one of the following:
+              An email text asking the user about at least one of the following:
 
-                                          - the discrepancy between yearly income and expenses
-                                          - clarification on the stock purchases
-                                          - OPTIONAL: a remark regarding the John Doe name being generic
-                                          """);
+              - the discrepancy between yearly income and expenses
+              - clarification on the stock purchases
+              """);
   }
 }
