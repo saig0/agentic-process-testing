@@ -15,9 +15,11 @@ import io.camunda.process.test.api.CamundaAssert;
 import io.camunda.process.test.api.CamundaProcessTestContext;
 import io.camunda.process.test.api.CamundaSpringProcessTest;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
+import io.camunda.process.test.api.CptAssertHelper;
 import io.camunda.process.test.api.assertions.JobSelectors;
 import io.camunda.process.test.api.assertions.ProcessInstanceSelectors;
 import org.jspecify.annotations.NonNull;
@@ -290,6 +292,132 @@ public class FraudDetectionTest {
         jobResult -> jobResult.activateElement("FraudDetected"));
 
     // verify
+    CamundaAssert.assertThat(processInstance)
+        .isCompleted()
+        .hasCompletedElementsInOrder(
+            byName("Call On External Advisor"),
+            byName("Send inquiry e-mail"),
+            byName("Report fraud detection"),
+            byName("Fraud is detected"));
+  }
+
+  @Test
+  void shouldDetectFraud_scenarioStyle() {
+    CptAssertHelper.scenario(client)
+        .when(
+            () -> {
+              CamundaAssert.assertThatUserTask(byElementId("CallOnExternalAdvisor")).isCreated();
+            })
+        .then(
+            () -> {
+              processTestContext.completeUserTask(
+                  byElementId("CallOnExternalAdvisor"),
+                  Map.ofEntries(
+                      Map.entry("fraudDetected", false),
+                      Map.entry(
+                          "expertAnalysis", "There is the best fraud that we have ever seen!")));
+            });
+
+    processTestContext
+        .mockJobWorker("io.camunda:email:1")
+        .thenComplete(
+            Map.of(
+                "emailSent",
+                Map.ofEntries(
+                    Map.entry("messageId", EMAIL_MESSAGE_ID),
+                    Map.entry(
+                        "body",
+                        "Dear user, we have detected fraud in your submission. Please state your opinion!"))));
+
+    CptAssertHelper.scenario(client)
+        .when(
+            () -> {
+              CamundaAssert.assertThatProcessInstance(
+                      ProcessInstanceSelectors.byProcessId(PROCESS_DEFINITION_ID))
+                  .hasActiveElements(byName("User response received"));
+            })
+        .then(
+            () -> {
+              client
+                  .newPublishMessageCommand()
+                  .messageName(EMAIL_MESSAGE_NAME)
+                  .correlationKey(EMAIL_MESSAGE_ID)
+                  .variables(Map.of("plainTextBody", "I did not commit fraud!"))
+                  .send()
+                  .join();
+            });
+
+    // given: tax return submitted
+    final ProcessInstanceEvent processInstance =
+        client
+            .newCreateInstanceCommand()
+            .bpmnProcessId(PROCESS_DEFINITION_ID)
+            .latestVersion()
+            .variables(
+                Map.of(
+                    "taxSubmission",
+                    Map.ofEntries(
+                        Map.entry("fullName", "John Doe"),
+                        Map.entry("dob", "1980-01-14"),
+                        Map.entry("emailAddress", "demo@camunda.com"),
+                        Map.entry("totalIncome", 100000),
+                        Map.entry("totalExpenses", 80000),
+                        Map.entry("largePurchases", List.of("stocks")),
+                        Map.entry("charitableDonations", "None"))))
+            .send()
+            .join();
+
+    // when
+    processTestContext.completeJobOfAdHocSubProcess(
+        JobSelectors.byElementId("Fraud_Detection_Agent"),
+        jobResult ->
+            jobResult
+                .activateElement("CallOnExternalAdvisor")
+                .variables(
+                    Map.ofEntries(
+                        Map.entry(
+                            "taxSubmission", "There are a lot of unusual transactions this year."),
+                        Map.entry("tendency", "I think this is fraudulent behavior."),
+                        Map.entry("suspiciousParts", "A B C"))));
+
+    CamundaAssert.setAssertionTimeout(Duration.ofSeconds(10));
+    processTestContext.completeJobOfAdHocSubProcess(
+        JobSelectors.byElementId("Fraud_Detection_Agent"),
+        jobResult -> jobResult.completionConditionFulfilled(true));
+
+    CamundaAssert.setAssertionTimeout(Duration.ofSeconds(10));
+    processTestContext.completeJob(
+        JobSelectors.byElementId("Judge_Agent"), Map.of("finalCheck", "no"));
+
+    CamundaAssert.setAssertionTimeout(Duration.ofSeconds(10));
+    processTestContext.completeJobOfAdHocSubProcess(
+        JobSelectors.byElementId("Fraud_Detection_Agent"),
+        jobResult ->
+            jobResult
+                .activateElement("Activity_1yge9uw")
+                .variables(
+                    Map.ofEntries(
+                        Map.entry(
+                            "taxSubmission", "There are a lot of unusual transactions this year."),
+                        Map.entry("whatToClarify", "I the submitter lying to us?"))));
+
+    CamundaAssert.setAssertionTimeout(Duration.ofSeconds(10));
+    processTestContext.completeJobOfAdHocSubProcess(
+        JobSelectors.byElementId("Fraud_Detection_Agent"),
+        jobResult -> jobResult.completionConditionFulfilled(true));
+
+    CamundaAssert.setAssertionTimeout(Duration.ofSeconds(10));
+    processTestContext.completeJob(
+        JobSelectors.byElementId("Judge_Agent"), Map.of("finalCheck", "no"));
+
+    CamundaAssert.setAssertionTimeout(Duration.ofSeconds(10));
+    processTestContext.completeJobOfAdHocSubProcess(
+        JobSelectors.byElementId("Fraud_Detection_Agent"),
+        jobResult -> jobResult.activateElement("FraudDetected"));
+
+    // verify
+    CamundaAssert.setAssertionTimeout(Duration.ofSeconds(10));
+
     CamundaAssert.assertThat(processInstance)
         .isCompleted()
         .hasCompletedElementsInOrder(
