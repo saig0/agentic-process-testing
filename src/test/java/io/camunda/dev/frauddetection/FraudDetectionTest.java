@@ -1,5 +1,9 @@
 package io.camunda.dev.frauddetection;
 
+import static io.camunda.process.test.api.assertions.ElementSelectors.byName;
+import static io.camunda.process.test.api.assertions.UserTaskSelectors.byElementId;
+import static org.testcontainers.shaded.org.awaitility.Awaitility.await;
+
 import io.camunda.client.CamundaClient;
 import io.camunda.client.api.command.CompleteAdHocSubProcessResultStep1;
 import io.camunda.client.api.command.CompleteJobCommandStep1;
@@ -10,15 +14,12 @@ import io.camunda.dev.frauddetection.cpt.extensions.FluentVariableYield;
 import io.camunda.process.test.api.CamundaAssert;
 import io.camunda.process.test.api.CamundaProcessTestContext;
 import io.camunda.process.test.api.CamundaSpringProcessTest;
+import java.util.Map;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.ThrowingConsumer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-
-import java.util.Map;
-
-import static io.camunda.process.test.api.assertions.UserTaskSelectors.byElementId;
-import static org.testcontainers.shaded.org.awaitility.Awaitility.await;
 
 @SpringBootTest(properties = {"camunda.client.worker.defaults.enabled=false"})
 @CamundaSpringProcessTest
@@ -28,7 +29,7 @@ public class FraudDetectionTest {
   @Autowired private CamundaProcessTestContext processTestContext;
 
   @Test
-  void detectsFraudOnExpertAnalysis_whenExpertDetectsFraud() throws Throwable {
+  void analyzesFraud_withMultipleAgentInteractions() throws Throwable {
     // given
     emailAsksForReasoningAboutTransactions();
     fraudDetectionDoesNotDetectFraud();
@@ -45,16 +46,15 @@ public class FraudDetectionTest {
     // then
     whenUserMessageIsReceived(
         processInstance,
-        pi -> {
-          assert pi != null;
-          CamundaAssert.assertThat(pi)
-              .isCompleted()
-              .hasCompletedElement("Fraud_Detection_Agent", 2)
-              .hasCompletedElements("CallOnExternalAdvisor", "Event_0ut60ps")
-              .hasTerminatedElement("Fraud_Detection_Agent", 1)
-              .hasTerminatedElements("Event_0gnk722")
-              .hasCompletedElements("Activity_0o48wy2", "Event_1sxkleb");
-        });
+        pi ->
+            CamundaAssert.assertThat(pi)
+                .isCompleted()
+                .hasCompletedElement(byName("Fraud Detection Agent"), 2)
+                .hasCompletedElements(byName("Call On External Advisor"), byName("No Fraud!"))
+                .hasTerminatedElement(byName("Fraud Detection Agent"), 1)
+                .hasTerminatedElements(byName("Throw Fraud"))
+                .hasCompletedElements(
+                    byName("Report fraud detection"), byName("Fraud is detected")));
   }
 
   private void aiAgentTraversesToolsUntilFraudDetection() {
@@ -186,7 +186,7 @@ public class FraudDetectionTest {
   }
 
   private void whenUserMessageIsReceived(
-      ProcessInstanceEvent event, ThrowingConsumer<ProcessInstanceEvent> assertions)
+      @NonNull ProcessInstanceEvent event, ThrowingConsumer<ProcessInstanceEvent> assertions)
       throws Throwable {
     publishUserMessage();
     assertions.accept(event);
