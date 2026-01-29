@@ -14,7 +14,12 @@ import io.camunda.dev.frauddetection.cpt.extensions.FluentVariableYield;
 import io.camunda.process.test.api.CamundaAssert;
 import io.camunda.process.test.api.CamundaProcessTestContext;
 import io.camunda.process.test.api.CamundaSpringProcessTest;
+
+import java.util.List;
 import java.util.Map;
+
+import io.camunda.process.test.api.assertions.JobSelectors;
+import io.camunda.process.test.api.assertions.ProcessInstanceSelectors;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.ThrowingConsumer;
@@ -24,6 +29,10 @@ import org.springframework.boot.test.context.SpringBootTest;
 @SpringBootTest(properties = {"camunda.client.worker.defaults.enabled=false"})
 @CamundaSpringProcessTest
 public class FraudDetectionTest {
+
+  private static final String PROCESS_DEFINITION_ID = "fraud-detection-process";
+  private static final String EMAIL_MESSAGE_ID = "1";
+  private static final String EMAIL_MESSAGE_NAME = "ba04712f-eae7-433a-9dd4-c56286e65940";
 
   @Autowired private CamundaClient client;
   @Autowired private CamundaProcessTestContext processTestContext;
@@ -37,7 +46,7 @@ public class FraudDetectionTest {
     aiAgentTraversesToolsUntilFraudDetection();
 
     // when
-    final ProcessInstanceEvent processInstance = deployProcess();
+    final ProcessInstanceEvent processInstance = createProcessInstance();
 
     assertExternalAdvisorIsConsulted(processInstance);
     userSubmitsNoFraudDetected();
@@ -101,7 +110,7 @@ public class FraudDetectionTest {
     CamundaAssert.assertThat(processInstance).hasActiveElement("CallOnExternalAdvisor", 1);
   }
 
-  private ProcessInstanceEvent deployProcess() {
+  private ProcessInstanceEvent createProcessInstance() {
     final ProcessInstanceEvent processInstance =
         client
             .newCreateInstanceCommand()
@@ -190,5 +199,103 @@ public class FraudDetectionTest {
       throws Throwable {
     publishUserMessage();
     assertions.accept(event);
+  }
+
+  @Test
+  void shouldDetectFraud_imperativeStyle() {
+    // given: tax return submitted
+    final ProcessInstanceEvent processInstance =
+        client
+            .newCreateInstanceCommand()
+            .bpmnProcessId(PROCESS_DEFINITION_ID)
+            .latestVersion()
+            .variables(
+                Map.of(
+                    "taxSubmission",
+                    Map.ofEntries(
+                        Map.entry("fullName", "John Doe"),
+                        Map.entry("dob", "1980-01-14"),
+                        Map.entry("emailAddress", "demo@camunda.com"),
+                        Map.entry("totalIncome", 100000),
+                        Map.entry("totalExpenses", 80000),
+                        Map.entry("largePurchases", List.of("stocks")),
+                        Map.entry("charitableDonations", "None"))))
+            .send()
+            .join();
+
+    // when
+    processTestContext.completeJobOfAdHocSubProcess(
+        JobSelectors.byElementId("Fraud_Detection_Agent"),
+        jobResult ->
+            jobResult
+                .activateElement("CallOnExternalAdvisor")
+                .variables(
+                    Map.ofEntries(
+                        Map.entry(
+                            "taxSubmission", "There are a lot of unusual transactions this year."),
+                        Map.entry("tendency", "I think this is fraudulent behavior."),
+                        Map.entry("suspiciousParts", "A B C"))));
+
+    processTestContext.completeUserTask(
+        byElementId("CallOnExternalAdvisor"),
+        Map.ofEntries(
+            Map.entry("fraudDetected", false),
+            Map.entry("expertAnalysis", "There is the best fraud that we have ever seen!")));
+
+    processTestContext.completeJobOfAdHocSubProcess(
+        JobSelectors.byElementId("Fraud_Detection_Agent"),
+        jobResult -> jobResult.completionConditionFulfilled(true));
+
+    processTestContext.completeJob(
+        JobSelectors.byElementId("Judge_Agent"), Map.of("finalCheck", "no"));
+
+    processTestContext.completeJobOfAdHocSubProcess(
+        JobSelectors.byElementId("Fraud_Detection_Agent"),
+        jobResult ->
+            jobResult
+                .activateElement("Activity_1yge9uw")
+                .variables(
+                    Map.ofEntries(
+                        Map.entry(
+                            "taxSubmission", "There are a lot of unusual transactions this year."),
+                        Map.entry("whatToClarify", "I the submitter lying to us?"))));
+
+    processTestContext.completeJob(
+        "io.camunda:email:1",
+        Map.of(
+            "emailSent",
+            Map.ofEntries(
+                Map.entry("messageId", EMAIL_MESSAGE_ID),
+                Map.entry(
+                    "body",
+                    "Dear user, we have detected fraud in your submission. Please state your opinion!"))));
+
+    client
+        .newPublishMessageCommand()
+        .messageName(EMAIL_MESSAGE_NAME)
+        .correlationKey(EMAIL_MESSAGE_ID)
+        .variables(Map.of("plainTextBody", "I did not commit fraud!"))
+        .send()
+        .join();
+
+    processTestContext.completeJobOfAdHocSubProcess(
+        JobSelectors.byElementId("Fraud_Detection_Agent"),
+        jobResult -> jobResult.completionConditionFulfilled(true));
+
+    processTestContext.completeJob(
+        JobSelectors.byElementId("Judge_Agent"), Map.of("finalCheck", "no"));
+
+    processTestContext.completeJobOfAdHocSubProcess(
+        JobSelectors.byElementId("Fraud_Detection_Agent"),
+        jobResult -> jobResult.activateElement("FraudDetected"));
+
+    // verify
+    CamundaAssert.assertThat(processInstance)
+        .isCompleted()
+        .hasCompletedElementsInOrder(
+            byName("Call On External Advisor"),
+            byName("Send inquiry e-mail"),
+            byName("Report fraud detection"),
+            byName("Fraud is detected"));
   }
 }
